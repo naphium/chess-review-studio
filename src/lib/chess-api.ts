@@ -74,7 +74,10 @@ export async function fetchLichess(username: string, perf: string): Promise<Game
   const res = await fetch(`https://lichess.org/api/games/user/${encodeURIComponent(u)}?${params}`, {
     headers: { Accept: "application/x-ndjson" },
   });
-  if (res.status === 404) throw new Error(`Lichess user "${username}" not found`);
+  if (res.status === 404) {
+    const exists = await fetch(`https://lichess.org/api/user/${encodeURIComponent(u)}`).then((r) => r.ok).catch(() => false);
+    throw new Error(exists ? "Lichess temporarily refused the request. Please retry." : `Lichess user "${username}" not found`);
+  }
   if (res.status === 429) throw new Error("Lichess rate limit reached. Wait a minute and retry.");
   if (!res.ok) throw new Error(`Lichess error (${res.status})`);
   const text = await res.text();
