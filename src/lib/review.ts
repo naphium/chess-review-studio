@@ -182,8 +182,8 @@ export async function reviewGame(
     }
     acc[out[i].color].push(r.accuracy);
     cpl[out[i].color].push(r.cpLoss);
-    counts[out[i].color][r.cls]++;
-    swings.push({ i: i + 1, s: Math.abs(winPct(evals[i + 1].cp) - winPct(evals[i].cp)) });
+    counts[out[i].color][r.cls] = (counts[out[i].color][r.cls] ?? 0) + 1;
+    swings.push({ i: i + 1, s: Math.abs(winPct(evals[i + 1]!.cp) - winPct(evals[i]!.cp)) });
   }
   const avg = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
   return {
