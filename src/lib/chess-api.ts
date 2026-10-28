@@ -71,7 +71,7 @@ export async function fetchLichess(username: string, perf: string): Promise<Game
     max: "30", pgnInJson: "true", opening: "true", clocks: "false", evals: "true",
   });
   if (perf !== "all") params.set("perfType", perf);
-  const res = await fetch(`https://lichess.org/api/user/${encodeURIComponent(u)}/games?${params}`, {
+  const res = await fetch(`https://lichess.org/api/games/user/${encodeURIComponent(u)}?${params}`, {
     headers: { Accept: "application/x-ndjson" },
   });
   if (res.status === 404) throw new Error(`Lichess user "${username}" not found`);
