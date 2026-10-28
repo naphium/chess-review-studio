@@ -21,7 +21,7 @@ function Badge({ c }: { c: Classification }) {
   );
 }
 
-export function Analysis({ pgn, meta, onBack }: { pgn: string; meta?: GameSummary; onBack: () => void }) {
+export function Analysis({ pgn, meta, onBack }: { pgn: string; meta?: GameSummary | undefined; onBack: () => void }) {
   const parsed = useMemo(() => {
     try { return { ok: true as const, ...parseGame(pgn) }; }
     catch (e) { return { ok: false as const, error: e instanceof Error ? e.message : "Invalid PGN/FEN" }; }

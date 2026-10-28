@@ -20,7 +20,7 @@ export const Route = createFileRoute("/")({
 });
 
 function Index() {
-  const [game, setGame] = useState<{ pgn: string; meta?: GameSummary } | null>(null);
+  const [game, setGame] = useState<{ pgn: string; meta?: GameSummary | undefined } | null>(null);
   return (
     <div className="flex min-h-screen flex-col bg-background bg-hero">
       <header className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-5">
