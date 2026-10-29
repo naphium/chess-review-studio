@@ -1,5 +1,5 @@
 # Tasks
-- [x] Default import speed to All Speeds.
-- [x] Put player names above/below the board and repair navigation placement and scrolling.
-- [x] Add large accuracy and clearly labeled estimated Elo.
-- [x] Test calculation rules and verify review interactions.
+- [ ] Replace accuracy-only Elo with a transparent match-based estimate and disclose limitations.
+- [ ] Prevent page scrolling on move navigation.
+- [ ] Add legal interactive variations, promotion, undo/reset, and live best moves.
+- [ ] Test rating and legal move rules and verify the interactive flow.
