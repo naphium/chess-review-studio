@@ -6,7 +6,7 @@ type Tab = "chesscom" | "lichess" | "manual";
 export function Importer({ onLoad }: { onLoad: (pgn: string, meta?: GameSummary) => void }) {
   const [tab, setTab] = useState<Tab>("chesscom");
   const [user, setUser] = useState("");
-  const [perf, setPerf] = useState("blitz");
+  const [perf, setPerf] = useState("all");
   const [text, setText] = useState("");
   const [games, setGames] = useState<GameSummary[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -51,8 +51,8 @@ export function Importer({ onLoad }: { onLoad: (pgn: string, meta?: GameSummary)
           <input value={user} onChange={(e) => setUser(e.target.value)} placeholder={`${tab === "chesscom" ? "Chess.com" : "Lichess"} username`}
             className="flex-1 rounded-lg border border-input bg-background px-3 py-2.5 outline-none focus:ring-2 focus:ring-ring" />
           {tab === "lichess" && (
-            <select value={perf} onChange={(e) => setPerf(e.target.value)} className="rounded-lg border border-input bg-background px-3 py-2.5">
-              <option value="all">All speeds</option><option value="bullet">Bullet</option><option value="blitz">Blitz</option>
+            <select aria-label="Game speed" value={perf} onChange={(e) => setPerf(e.target.value)} className="rounded-lg border border-input bg-background px-3 py-2.5">
+              <option value="all">All Speeds</option><option value="bullet">Bullet</option><option value="blitz">Blitz</option>
               <option value="rapid">Rapid</option><option value="classical">Classical</option>
             </select>
           )}
