@@ -9,4 +9,5 @@
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
 - All chess engine work (Stockfish, classification) runs client-side in a Web Worker from public/engine; game/opening/tablebase APIs are fetched directly from the browser — keeps hosting near-zero cost.
-- Single-game estimated Elo is a browser-safe accuracy heuristic in review-rating, withheld below ten moves per player and labeled as unofficial because accuracy alone cannot determine a calibrated rating.
+- Single-game estimated Elo uses both actual player ratings and relative engine accuracy in review-rating; withhold it when either rating or ten moves each are missing and explicitly distinguish this custom estimate from Chess.com's unpublished formula.
+- Interactive variations use chess.js legal validation and a separate short-lived client Worker per settled position, discarding stale results and leaving the imported review and its metrics unchanged.

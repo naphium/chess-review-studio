@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Chessboard } from "react-chessboard";
-import { ArrowLeft, ArrowLeftRight, ChevronLeft, ChevronRight, SkipBack, SkipForward } from "lucide-react";
+import { ArrowLeft, ArrowLeftRight, ChevronLeft, ChevronRight, SkipBack, SkipForward, Undo2, RotateCcw, FlaskConical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { estimateGameElo } from "@/lib/review-rating";
+import { useVariation } from "@/hooks/use-variation";
+import { bestMoveSan } from "@/lib/variation";
 import { Engine } from "@/lib/engine";
 import { fetchOpening, type GameSummary, type OpeningInfo } from "@/lib/chess-api";
 import {
@@ -39,13 +41,14 @@ export function Analysis({ pgn, meta, onBack }: { pgn: string; meta?: GameSummar
   const [flip, setFlip] = useState(meta?.userColor === "black");
   const engineRef = useRef<Engine | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const moveSectionRef = useRef<HTMLDivElement>(null);
 
   const moves = parsed.ok ? (result?.moves ?? parsed.moves) : [];
+  const baseFen = parsed.ok ? (ply === 0 ? parsed.startFen : moves[ply - 1]?.fenAfter ?? parsed.startFen) : "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+  const variation = useVariation(baseFen, depth);
 
   function navigateMove(target: number) {
+    variation.leave();
     setPly(Math.max(0, Math.min(moves.length, target)));
-    moveSectionRef.current?.scrollIntoView({ block: "nearest", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
   }
 
   useEffect(() => {
@@ -71,12 +74,13 @@ export function Analysis({ pgn, meta, onBack }: { pgn: string; meta?: GameSummar
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (variation.enabled || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
       if (e.key === "ArrowRight") setPly((p) => Math.min(moves.length, p + 1));
       if (e.key === "ArrowLeft") setPly((p) => Math.max(0, p - 1));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [moves.length]);
+  }, [moves.length, variation.enabled]);
 
   useEffect(() => {
     const list = listRef.current;
@@ -97,11 +101,12 @@ export function Analysis({ pgn, meta, onBack }: { pgn: string; meta?: GameSummar
     );
   }
 
-  const fen = ply === 0 ? parsed.startFen : moves[ply - 1]?.fenAfter ?? parsed.startFen;
-  const ev = evals[ply];
+  const fen = variation.fen;
+  const ev = variation.enabled ? variation.ev : evals[ply];
   const wp = ev ? winPct(ev.cp) : 50;
   const cur = ply > 0 ? moves[ply - 1] : undefined;
-  const best = evals[ply]?.best;
+  const best = ev?.best;
+  const bestSan = bestMoveSan(fen, best);
   const arrows = best ? [{ startSquare: best.slice(0, 2), endSquare: best.slice(2, 4), color: "var(--c-best)" }] : [];
   const h = parsed.headers;
   const white = h.White ?? meta?.white ?? "White";
@@ -121,6 +126,7 @@ export function Analysis({ pgn, meta, onBack }: { pgn: string; meta?: GameSummar
       <div className="flex flex-wrap items-center gap-3">
         <Button onClick={onBack} variant="outline"><ArrowLeft />New game</Button>
         <div className="flex-1 text-sm text-muted-foreground">{h.Result}</div>
+        <Button variant={variation.enabled ? "default" : "outline"} onClick={variation.toggle} aria-pressed={variation.enabled}><FlaskConical />{variation.enabled ? "Return to game" : "Analyze position"}</Button>
         <label className="text-sm text-muted-foreground">Depth
           <select value={depth} onChange={(e) => setDepth(+e.target.value)} className="ml-2 rounded border border-input bg-background px-2 py-1 text-foreground">
             {[10, 12, 14, 16, 18].map((d) => <option key={d}>{d}</option>)}
@@ -129,11 +135,13 @@ export function Analysis({ pgn, meta, onBack }: { pgn: string; meta?: GameSummar
         <Button onClick={() => setFlip((f) => !f)} variant="outline" size="icon" aria-label="Flip board" title="Flip board"><ArrowLeftRight /></Button>
       </div>
 
+      <div className="h-1.5">
       {progress < 1 && (
         <div className="h-1.5 overflow-hidden rounded-full bg-muted">
           <div className="h-full bg-primary transition-all" style={{ width: `${progress * 100}%` }} />
         </div>
       )}
+      </div>
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)]">
         {/* Eval bar + board */}
@@ -151,7 +159,13 @@ export function Analysis({ pgn, meta, onBack }: { pgn: string; meta?: GameSummar
             <Chessboard options={{
               position: fen,
               boardOrientation: flip ? "black" : "white",
-              allowDragging: false,
+              allowDragging: variation.enabled && !variation.promotion && !variation.terminal,
+              onPieceDrop: ({ sourceSquare, targetSquare }) => targetSquare ? variation.move(sourceSquare, targetSquare) : false,
+              onSquareClick: ({ square }) => variation.click(square),
+              squareStyles: Object.fromEntries([
+                ...(variation.selected ? [[variation.selected, { backgroundColor: "var(--primary)" }]] : []),
+                ...variation.targets.map((square) => [square, { boxShadow: "inset 0 0 0 5px var(--c-best)" }]),
+              ]),
               arrows,
               darkSquareStyle: { backgroundColor: "var(--board-dark)" },
               lightSquareStyle: { backgroundColor: "var(--board-light)" },
@@ -161,11 +175,32 @@ export function Analysis({ pgn, meta, onBack }: { pgn: string; meta?: GameSummar
           </div>
           </div>
           <div className="pl-8">{playerLabel(flip ? "black" : "white")}</div>
+          {variation.enabled && (
+            <div className="mt-2 space-y-3 border-t border-border py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <b className="text-sm">{variation.status}</b>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="icon" title="Undo variation move" aria-label="Undo variation move" disabled={!variation.line.length && !variation.promotion} onClick={variation.undo}><Undo2 /></Button>
+                  <Button variant="outline" size="icon" title="Reset variation" aria-label="Reset variation" disabled={!variation.line.length && !variation.promotion} onClick={variation.reset}><RotateCcw /></Button>
+                </div>
+              </div>
+              {variation.promotion && <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Promote pawn">
+                <span className="text-sm">Promote to</span>
+                {([["q", "Queen"], ["r", "Rook"], ["b", "Bishop"], ["n", "Knight"]] as const).map(([piece, label]) => <Button key={piece} size="sm" variant="secondary" onClick={() => { if (variation.promotion) variation.move(variation.promotion.from, variation.promotion.to, piece); }}>{label}</Button>)}
+                <Button size="sm" variant="ghost" onClick={variation.cancelPromotion}>Cancel</Button>
+              </div>}
+              <div className="flex flex-wrap items-center gap-3 text-sm" aria-live="polite">
+                <span>{variation.error ?? (variation.terminal ? variation.status : bestSan ? `Best move: ${bestSan} · ${formatEval(ev)}` : "Finding best move…")}</span>
+                {best && <Button size="sm" variant="secondary" onClick={() => variation.move(best.slice(0, 2), best.slice(2, 4), best[4])}>Play best move</Button>}
+              </div>
+              <p className="min-h-5 break-words font-mono text-sm text-muted-foreground" aria-label="Variation moves">{variation.line.map((move) => move.san).join(" · ") || "—"}</p>
+            </div>
+          )}
         </div>
 
         <div className="min-w-0 space-y-4">
         {/* Move list */}
-        <div ref={moveSectionRef} className="relative flex min-h-0 scroll-mt-4 flex-col rounded-lg border border-border bg-card">
+        <div className="relative flex min-h-0 flex-col rounded-lg border border-border bg-card">
           <div className="sticky top-2 z-10 flex flex-wrap items-center justify-center gap-2 rounded-t-lg border-b border-border bg-card p-3">
             <Button variant="secondary" size="icon" aria-label="First move" title="First move" disabled={ply === 0} onClick={() => navigateMove(0)}><SkipBack /></Button>
             <Button variant="secondary" size="icon" aria-label="Previous move" title="Previous move" disabled={ply === 0} onClick={() => navigateMove(ply - 1)}><ChevronLeft /></Button>
@@ -192,7 +227,7 @@ export function Analysis({ pgn, meta, onBack }: { pgn: string; meta?: GameSummar
               <div key={r} className="grid grid-cols-[2.5rem_1fr_1fr] items-center">
                 <span className="text-muted-foreground">{r + 1}.</span>
                 {[r * 2, r * 2 + 1].map((i) => moves[i] && (
-                   <Button variant="ghost" key={i} data-ply={i + 1} onClick={() => setPly(i + 1)}
+                   <Button variant="ghost" key={i} data-ply={i + 1} onClick={() => navigateMove(i + 1)}
                      className={`h-8 justify-start gap-1.5 px-2 py-1 font-mono ${ply === i + 1 ? "bg-primary/20 text-primary" : "hover:bg-muted"} ${result?.turningPoints.includes(i + 1) ? "underline decoration-primary decoration-2" : ""}`}>
                      {moves[i].san}{moves[i].cls && <Badge c={moves[i].cls} />}
                    </Button>
@@ -217,7 +252,7 @@ export function Analysis({ pgn, meta, onBack }: { pgn: string; meta?: GameSummar
               )}
             </div>
           )}
-          <Metrics result={result} white={white} black={black} onJump={setPly} />
+          <Metrics result={result} white={white} black={black} whiteRating={Number(whiteRating)} blackRating={Number(blackRating)} onJump={navigateMove} />
         </div>
         </div>
       </div>
@@ -225,7 +260,7 @@ export function Analysis({ pgn, meta, onBack }: { pgn: string; meta?: GameSummar
   );
 }
 
-function Metrics({ result, white, black, onJump }: { result: ReviewResult | null; white: string; black: string; onJump: (p: number) => void }) {
+function Metrics({ result, white, black, whiteRating, blackRating, onJump }: { result: ReviewResult | null; white: string; black: string; whiteRating: number; blackRating: number; onJump: (p: number) => void }) {
   if (!result) return <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">Stockfish is reviewing the game in your browser…</div>;
   const pie = (side: "w" | "b") => {
     const c = result.counts[side];
@@ -245,7 +280,7 @@ function Metrics({ result, white, black, onJump }: { result: ReviewResult | null
             <p className="truncate text-xs text-muted-foreground">{s === "w" ? white : black}</p>
             <p className="mt-2 font-display text-4xl font-bold text-primary tabular-nums">{result.accuracy[s].toFixed(1)}<span className="text-lg">%</span></p>
             <p className="text-xs text-muted-foreground">Accuracy</p>
-            <p className="mt-3 font-display text-4xl font-bold tabular-nums">{estimateGameElo(result.accuracy[s], result.moves.filter((m) => m.color === s).length) ?? "—"}</p>
+            <p className="mt-3 font-display text-4xl font-bold tabular-nums">{estimateGameElo({ accuracy: result.accuracy[s], opponentAccuracy: result.accuracy[s === "w" ? "b" : "w"], playerRating: s === "w" ? whiteRating : blackRating, opponentRating: s === "w" ? blackRating : whiteRating, moveCount: result.moves.filter((m) => m.color === s).length, opponentMoveCount: result.moves.filter((m) => m.color !== s).length }) ?? "—"}</p>
             <p className="text-xs text-muted-foreground">Estimated Elo</p>
             <p className="mt-2 text-xs text-muted-foreground">ACPL {Math.round(result.acpl[s])}</p>
             <div className="mx-auto mt-2 h-20 w-20 rounded-full" style={{ background: pie(s) }}>
@@ -254,7 +289,7 @@ function Metrics({ result, white, black, onJump }: { result: ReviewResult | null
           </div>
         ))}
       </div>
-      <p className="mt-3 text-center text-xs text-muted-foreground">Rough single-game estimate, not an official rating. Requires 10 moves per player.</p>
+      <p className="mt-3 text-center text-xs text-muted-foreground">Custom match estimate using both ratings and relative accuracy, not Chess.com's rating formula. Requires both ratings and 10 moves each.</p>
       <table className="mt-4 w-full text-sm">
         <tbody>
           {ORDER.map((k) => (
